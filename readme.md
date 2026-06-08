@@ -9,6 +9,8 @@ Telegram bot for running your local terminal from Telegram. It is useful for qui
 - Short output is sent as a message.
 - Long output is automatically sent as a file.
 - If `cat file-name` produces long output, the Telegram document uses the original file name.
+- Claude chat bridge for Claude Code prompts from Telegram.
+- Interactive mini-shell sessions for allowlisted commands such as `python` and `ssh`.
 - User ID whitelist.
 - Telegram API timeouts can be configured from `.env`.
 
@@ -48,6 +50,10 @@ TELEGRAM_POOL_TIMEOUT=10
 TELEGRAM_MEDIA_WRITE_TIMEOUT=120
 TELEGRAM_GET_UPDATES_READ_TIMEOUT=60
 POLLING_TIMEOUT=30
+CLAUDE_BRIDGE_COMMAND=claude
+CLAUDE_BRIDGE_ARGS=--print --permission-mode acceptEdits
+CLAUDE_BRIDGE_TIMEOUT=300
+INTERACTIVE_COMMANDS=python,python3,node,ssh,mysql,psql
 ```
 
 Increase these timeouts if the Telegram connection is often slow or output file uploads often time out.
@@ -70,11 +76,69 @@ cat chapter-01.md
 
 If `cat chapter-01.md` is too long to send as a message, the bot sends a document named `chapter-01.md`.
 
+## Claude Bridge
+
+Type `claude` to start a Claude chat bridge from the current working directory. While the bridge is active, normal Telegram messages are sent to Claude Code in non-interactive print mode, and Claude's response is sent back to the chat.
+
+```bash
+claude
+read this project and summarize it
+run the tests and explain the failures
+/exit
+```
+
+You can also send the first prompt immediately:
+
+```bash
+claude explain this repository
+```
+
+The bridge uses `claude --print` by default, with a stable Claude session ID for each Telegram session. Use `CLAUDE_BRIDGE_ARGS` to adjust Claude flags. If Claude needs broader tool permissions for your workflow, configure that in `.env` deliberately.
+
+## Interactive Sessions
+
+Some CLI apps need a real terminal and ongoing stdin, so one-shot command execution is not enough. `teleshell` can open a mini-shell session through a pseudo-terminal.
+
+Allowlisted interactive commands start automatically:
+
+```bash
+python
+ssh user@example.com
+```
+
+You can force any command into interactive mode with `/pty`:
+
+```bash
+/pty claude
+/pty python
+```
+
+While a session is active, `teleshell` keeps a mini terminal panel updated by editing the session message. Normal Telegram messages are sent to that process instead of being executed as new shell commands.
+
+The panel is rendered as a preformatted terminal viewport and uses a small ANSI terminal emulator for apps that redraw the screen, such as Claude Code. It uses about 16 rows by 42 columns, which keeps it close to a small Telegram terminal. Use `Up` and `Down` to scroll through older or newer output.
+
+The panel includes buttons for common interactive prompts:
+
+```text
+[Up] [Down]
+[1] [2] [Enter] [Esc]
+[Ctrl-C] [Close]
+```
+
+Session controls:
+
+```bash
+/exit
+/ctrlc
+```
+
+For command-line prompts, tap `1`, `2`, `Enter`, or `Esc` as needed.
+
 ## Test
 
 ```bash
 source .venv/bin/activate
-python -m unittest test_teleshell.py
+python -m unittest discover -s tests
 ```
 
 ## Notes
