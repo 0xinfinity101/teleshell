@@ -28,6 +28,7 @@ class ServiceManagerTest(unittest.TestCase):
             python_path=Path("/opt/teleshell/.venv/bin/python"),
             script_path=Path("/opt/teleshell/teleshell.py"),
             systemd_dir=Path("/tmp/systemd/user"),
+            command_path="/opt/bin:/usr/bin",
         )
 
         content = service_unit_content(config)
@@ -35,6 +36,7 @@ class ServiceManagerTest(unittest.TestCase):
         self.assertIn("Description=teleshell Telegram terminal bot", content)
         self.assertIn("WorkingDirectory=/opt/teleshell", content)
         self.assertIn("EnvironmentFile=-/opt/teleshell/.env", content)
+        self.assertIn("Environment=PATH=/opt/bin:/usr/bin", content)
         self.assertIn("ExecStart=/opt/teleshell/.venv/bin/python /opt/teleshell/teleshell.py", content)
         self.assertIn("Restart=always", content)
         self.assertIn("WantedBy=default.target", content)
@@ -55,6 +57,7 @@ class ServiceManagerTest(unittest.TestCase):
                 python_path=Path("/opt/teleshell/.venv/bin/python"),
                 script_path=Path("/opt/teleshell/teleshell.py"),
                 systemd_dir=systemd_dir,
+                command_path="/usr/bin",
             )
 
             message = apply_autorun(config, runner=runner)
@@ -82,6 +85,7 @@ class ServiceManagerTest(unittest.TestCase):
                 python_path=Path("/opt/teleshell/.venv/bin/python"),
                 script_path=Path("/opt/teleshell/teleshell.py"),
                 systemd_dir=systemd_dir,
+                command_path="/usr/bin",
             )
 
             message = apply_autorun(config, runner=runner)

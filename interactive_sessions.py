@@ -7,6 +7,8 @@ from typing import Awaitable, Callable
 
 import pexpect
 
+from command_environment import build_command_env
+
 
 OutputCallback = Callable[[str], Awaitable[None]]
 SpawnFactory = Callable[[str, str], object]
@@ -29,7 +31,7 @@ def command_name(command: str) -> str:
 
 
 def default_spawn(command: str, cwd: str):
-    env = os.environ.copy()
+    env = build_command_env(os.environ)
     env.update({
         "CLICOLOR": "0",
         "NO_COLOR": "1",

@@ -1,5 +1,6 @@
 import argparse
 import getpass
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -7,6 +8,8 @@ from pathlib import Path
 from typing import Callable
 
 from dotenv import dotenv_values
+
+from command_environment import build_command_path
 
 
 TRUE_VALUES = {"1", "true", "yes", "y", "on"}
@@ -23,6 +26,7 @@ class ServiceConfig:
     python_path: Path
     script_path: Path
     systemd_dir: Path
+    command_path: str
 
     @property
     def unit_name(self) -> str:
@@ -67,6 +71,10 @@ def build_config(env_path: Path | None = None) -> ServiceConfig:
         env.get("SYSTEMD_USER_DIR")
         or Path.home() / ".config" / "systemd" / "user"
     )
+    command_path = build_command_path(
+        env.get("SERVICE_PATH") or os.environ.get("PATH"),
+        extra_paths=env.get("COMMAND_EXTRA_PATHS"),
+    )
 
     return ServiceConfig(
         autorun=parse_bool(env.get("AUTORUN"), default=False),
@@ -76,6 +84,7 @@ def build_config(env_path: Path | None = None) -> ServiceConfig:
         python_path=python_path,
         script_path=script_path,
         systemd_dir=systemd_dir,
+        command_path=command_path,
     )
 
 
@@ -91,6 +100,7 @@ def service_unit_content(config: ServiceConfig) -> str:
         f"WorkingDirectory={config.project_dir}",
         f"EnvironmentFile=-{config.env_path}",
         "Environment=PYTHONUNBUFFERED=1",
+        f"Environment=PATH={config.command_path}",
         f"ExecStart={config.python_path} {config.script_path}",
         "Restart=always",
         "RestartSec=5",

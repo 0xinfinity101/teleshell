@@ -52,6 +52,7 @@ TELEGRAM_GET_UPDATES_READ_TIMEOUT=60
 POLLING_TIMEOUT=30
 AUTORUN=false
 SERVICE_NAME=teleshell
+COMMAND_EXTRA_PATHS=
 CLAUDE_BRIDGE_COMMAND=claude
 CLAUDE_BRIDGE_ARGS=--print --permission-mode acceptEdits
 CLAUDE_BRIDGE_TIMEOUT=300
@@ -59,6 +60,12 @@ INTERACTIVE_COMMANDS=python,python3,node,ssh,mysql,psql
 ```
 
 Increase these timeouts if the Telegram connection is often slow or output file uploads often time out.
+
+`teleshell` automatically prepends common user command directories to `PATH`, including `~/.opencode/bin`, `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, and `~/.cargo/bin`. If a tool is installed somewhere else, add it to `COMMAND_EXTRA_PATHS` using colon-separated paths:
+
+```env
+COMMAND_EXTRA_PATHS=/opt/my-tools/bin:/another/bin
+```
 
 ## Running The Bot
 
