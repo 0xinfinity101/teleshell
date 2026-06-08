@@ -1,4 +1,5 @@
 import os
+import logging
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -55,6 +56,28 @@ class TeleshellHelpersTest(unittest.TestCase):
 
         with patch.dict(os.environ, {}, clear=True):
             self.assertTrue(bot.get_bool_env("MISSING_FLAG", True))
+
+    def test_parse_log_level_uses_known_level_or_default(self):
+        self.assertEqual(bot.parse_log_level("warning", "INFO"), logging.WARNING)
+        self.assertEqual(bot.parse_log_level("10", "WARNING"), logging.DEBUG)
+        self.assertEqual(bot.parse_log_level("not-a-level", "ERROR"), logging.ERROR)
+
+    def test_configure_logging_sets_http_loggers_separately(self):
+        original_root = logging.getLogger().level
+        original_httpx = logging.getLogger("httpx").level
+        original_telegram = logging.getLogger("telegram").level
+        try:
+            app_level, http_level = bot.configure_logging("DEBUG", "ERROR")
+
+            self.assertEqual(app_level, logging.DEBUG)
+            self.assertEqual(http_level, logging.ERROR)
+            self.assertEqual(logging.getLogger().level, logging.DEBUG)
+            self.assertEqual(logging.getLogger("httpx").level, logging.ERROR)
+            self.assertEqual(logging.getLogger("telegram").level, logging.ERROR)
+        finally:
+            logging.getLogger().setLevel(original_root)
+            logging.getLogger("httpx").setLevel(original_httpx)
+            logging.getLogger("telegram").setLevel(original_telegram)
 
 
 class FakeMessage:

@@ -57,10 +57,35 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-)
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+HTTP_LOGGERS = ("httpx", "httpcore", "telegram", "telegram.ext")
+
+
+def parse_log_level(value: str | None, default: str = "WARNING") -> int:
+    raw = (value or default).strip().upper()
+    if raw.isdigit():
+        return int(raw)
+    level = logging.getLevelName(raw)
+    if isinstance(level, int):
+        return level
+    fallback = logging.getLevelName(default.strip().upper())
+    return fallback if isinstance(fallback, int) else logging.WARNING
+
+
+def configure_logging(
+    app_level_name: str | None = None,
+    http_level_name: str | None = None,
+) -> tuple[int, int]:
+    app_level = parse_log_level(app_level_name or os.getenv("LOG_LEVEL"), "WARNING")
+    http_level = parse_log_level(http_level_name or os.getenv("HTTP_LOG_LEVEL"), "WARNING")
+    logging.basicConfig(level=app_level, format=LOG_FORMAT)
+    logging.getLogger().setLevel(app_level)
+    for logger_name in HTTP_LOGGERS:
+        logging.getLogger(logger_name).setLevel(http_level)
+    return app_level, http_level
+
+
+configure_logging()
 logger = logging.getLogger(__name__)
 
 

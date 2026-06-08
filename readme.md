@@ -43,6 +43,8 @@ Find your Telegram user ID with a bot such as `@userinfobot`.
 The full example is in `.env.example`.
 
 ```env
+LOG_LEVEL=WARNING
+HTTP_LOG_LEVEL=WARNING
 TELEGRAM_CONNECT_TIMEOUT=15
 TELEGRAM_READ_TIMEOUT=30
 TELEGRAM_WRITE_TIMEOUT=30
@@ -60,7 +62,7 @@ CLAUDE_BRIDGE_TIMEOUT=300
 INTERACTIVE_COMMANDS=python,python3,node,ssh,mysql,psql
 ```
 
-Increase these timeouts if the Telegram connection is often slow or output file uploads often time out.
+Increase these timeouts if the Telegram connection is often slow or output file uploads often time out. Keep `HTTP_LOG_LEVEL=WARNING` unless you are actively debugging Telegram requests, because lower levels may log request URLs.
 
 `teleshell` automatically prepends common user command directories to `PATH`, including `~/.opencode/bin`, `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, and `~/.cargo/bin`. If a tool is installed somewhere else, add it to `COMMAND_EXTRA_PATHS` using colon-separated paths:
 
@@ -120,13 +122,42 @@ The generated service uses the repository virtual environment by default:
 .venv/bin/python teleshell.py
 ```
 
-Useful commands:
+Useful service manager commands:
 
 ```bash
 python service_manager.py status
 python service_manager.py unit
 python service_manager.py enable
 python service_manager.py disable
+```
+
+Useful systemd commands:
+
+```bash
+# Restart after editing code or .env
+systemctl --user restart teleshell.service
+
+# Stop temporarily
+systemctl --user stop teleshell.service
+
+# Start again
+systemctl --user start teleshell.service
+
+# Stop and disable autorun
+systemctl --user disable --now teleshell.service
+
+# Check status
+systemctl --user status teleshell.service --no-pager
+
+# Show recent logs
+journalctl --user -u teleshell.service -n 80 --no-pager
+```
+
+To reduce noisy Telegram HTTP logs, keep this in `.env` and restart the service:
+
+```env
+LOG_LEVEL=WARNING
+HTTP_LOG_LEVEL=WARNING
 ```
 
 The generated service includes basic hardening options such as `NoNewPrivileges=true`, `PrivateTmp=true`, and `ProtectSystem=full`.
