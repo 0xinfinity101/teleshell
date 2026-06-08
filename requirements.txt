@@ -1,4 +1,9 @@
+# Telegram bot framework
 python-telegram-bot
+
+# .env loading for the bot and service manager
 python-dotenv
+
+# Pseudo-terminal and ANSI screen rendering for /pty sessions
 pexpect
 pyte

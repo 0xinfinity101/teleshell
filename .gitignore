@@ -24,6 +24,11 @@ dist/
 *.tmp
 teleshell_output_*.txt
 
+# Local systemd service artifacts
+.systemd/
+systemd/user/
+*.service.generated
+
 # OS/editor noise
 .DS_Store
 Thumbs.db

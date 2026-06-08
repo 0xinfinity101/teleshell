@@ -50,6 +50,8 @@ TELEGRAM_POOL_TIMEOUT=10
 TELEGRAM_MEDIA_WRITE_TIMEOUT=120
 TELEGRAM_GET_UPDATES_READ_TIMEOUT=60
 POLLING_TIMEOUT=30
+AUTORUN=false
+SERVICE_NAME=teleshell
 CLAUDE_BRIDGE_COMMAND=claude
 CLAUDE_BRIDGE_ARGS=--print --permission-mode acceptEdits
 CLAUDE_BRIDGE_TIMEOUT=300
@@ -75,6 +77,53 @@ cat chapter-01.md
 ```
 
 If `cat chapter-01.md` is too long to send as a message, the bot sends a document named `chapter-01.md`.
+
+## Autorun
+
+`teleshell` can run in the background through a systemd user service. Set this in `.env` to enable automatic background startup:
+
+```env
+AUTORUN=true
+SERVICE_NAME=teleshell
+```
+
+Then apply the setting:
+
+```bash
+source .venv/bin/activate
+python service_manager.py apply
+```
+
+Changing `.env` alone does not change systemd. Run `python service_manager.py apply` each time you switch `AUTORUN` between `true` and `false`.
+
+When `AUTORUN=true`, the service manager writes `~/.config/systemd/user/teleshell.service`, reloads systemd, and runs:
+
+```bash
+systemctl --user enable --now teleshell.service
+```
+
+When `AUTORUN=false`, running `python service_manager.py apply` disables and removes the user service.
+
+The generated service uses the repository virtual environment by default:
+
+```bash
+.venv/bin/python teleshell.py
+```
+
+Useful commands:
+
+```bash
+python service_manager.py status
+python service_manager.py unit
+python service_manager.py enable
+python service_manager.py disable
+```
+
+To allow the service to start after reboot before you log in, enable lingering once:
+
+```bash
+loginctl enable-linger "$USER"
+```
 
 ## Claude Bridge
 
