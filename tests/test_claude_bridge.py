@@ -90,6 +90,17 @@ class ClaudeBridgeManagerTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(output, "permission denied")
 
+    async def test_send_prompt_rejects_parallel_prompt_for_same_session(self):
+        manager = ClaudeBridgeManager()
+        session = manager.start(7, "/tmp")
+        await session.prompt_lock.acquire()
+        try:
+            output = await manager.send_prompt(7, "second prompt")
+        finally:
+            session.prompt_lock.release()
+
+        self.assertEqual(output, "Another Claude prompt is still running.")
+
     async def test_send_prompt_reports_missing_session(self):
         manager = ClaudeBridgeManager()
 

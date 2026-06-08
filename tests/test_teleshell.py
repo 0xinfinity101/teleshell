@@ -46,6 +46,16 @@ class TeleshellHelpersTest(unittest.TestCase):
 
         self.assertEqual(filename, "output.txt")
 
+    def test_get_bool_env_reads_common_true_and_false_values(self):
+        with patch.dict(os.environ, {"SAFE_MODE": "true"}):
+            self.assertTrue(bot.get_bool_env("SAFE_MODE", False))
+
+        with patch.dict(os.environ, {"SAFE_MODE": "0"}):
+            self.assertFalse(bot.get_bool_env("SAFE_MODE", True))
+
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(bot.get_bool_env("MISSING_FLAG", True))
+
 
 class FakeMessage:
     def __init__(self, text):
@@ -177,6 +187,40 @@ class TeleshellRoutingTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bridge.started, [(123, os.path.expanduser("~"))])
         self.assertEqual(sessions.started, [])
         self.assertIn("Claude bridge started", update.message.replies[0][0])
+
+    async def test_safe_mode_requires_run_for_plain_shell_commands(self):
+        sessions = FakeInteractiveSessions(has_session=False)
+        update = FakeUpdate("ls")
+
+        with patch.object(bot, "ALLOWED_USER_IDS", {123}), \
+             patch.object(bot, "SAFE_MODE", True), \
+             patch.object(bot, "interactive_sessions", sessions), \
+             patch.object(bot, "run_shell_command") as run_shell_command:
+            await bot.handle_command(update, None)
+
+        self.assertIn("Safe mode is enabled", update.message.replies[0][0])
+        run_shell_command.assert_not_called()
+
+    async def test_run_command_executes_shell_in_safe_mode(self):
+        update = FakeUpdate("/run ls")
+        context = FakeContext(["ls"])
+
+        with patch.object(bot, "ALLOWED_USER_IDS", {123}), \
+             patch.object(bot, "SAFE_MODE", True), \
+             patch.object(bot, "run_shell_command", return_value="ok") as run_shell_command:
+            await bot.cmd_run(update, context)
+
+        run_shell_command.assert_called_once_with("ls", os.path.expanduser("~"))
+        self.assertIn("ok", update.message.replies[0][0])
+
+    async def test_run_command_blocks_dangerous_command(self):
+        update = FakeUpdate("/run rm -rf /")
+        context = FakeContext(["rm", "-rf", "/"])
+
+        with patch.object(bot, "ALLOWED_USER_IDS", {123}):
+            await bot.cmd_run(update, context)
+
+        self.assertEqual(update.message.replies[0][0], "Command blocked.")
 
     async def test_active_claude_bridge_receives_plain_text_prompt(self):
         sessions = FakeInteractiveSessions(has_session=False)
@@ -321,6 +365,18 @@ class TeleshellRoutingTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(update.message.replies[0][0], "Unknown command. Use /pty <command> to start a session.")
         run_shell_command.assert_not_called()
+
+    async def test_pty_blocks_dangerous_command(self):
+        sessions = FakeInteractiveSessions(has_session=False)
+        update = FakeUpdate("/pty rm -rf /")
+        context = FakeContext(["rm", "-rf", "/"])
+
+        with patch.object(bot, "ALLOWED_USER_IDS", {123}), \
+             patch.object(bot, "interactive_sessions", sessions):
+            await bot.cmd_pty(update, context)
+
+        self.assertEqual(update.message.replies[0][0], "Command blocked.")
+        self.assertEqual(sessions.started, [])
 
 
 if __name__ == "__main__":

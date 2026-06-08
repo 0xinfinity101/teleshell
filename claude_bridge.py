@@ -2,7 +2,7 @@ import asyncio
 import shlex
 import subprocess
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 
@@ -41,6 +41,7 @@ class ClaudeBridgeSession:
     cwd: str
     session_id: str
     successful_turns: int = 0
+    prompt_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 class ClaudeBridgeManager:
@@ -74,24 +75,27 @@ class ClaudeBridgeManager:
         session = self.sessions.get(user_id)
         if not session:
             return "Claude bridge is not running."
+        if session.prompt_lock.locked():
+            return "Another Claude prompt is still running."
 
-        argv = build_claude_command(
-            self.command,
-            self.args,
-            session.session_id,
-            prompt,
-            resume=session.successful_turns > 0,
-        )
-        try:
-            result = await asyncio.to_thread(self.runner, argv, session.cwd, self.timeout)
-        except subprocess.TimeoutExpired:
-            return f"Claude timed out after {self.timeout:g} seconds."
-        except Exception as exc:
-            return f"Claude error: {exc}"
+        async with session.prompt_lock:
+            argv = build_claude_command(
+                self.command,
+                self.args,
+                session.session_id,
+                prompt,
+                resume=session.successful_turns > 0,
+            )
+            try:
+                result = await asyncio.to_thread(self.runner, argv, session.cwd, self.timeout)
+            except subprocess.TimeoutExpired:
+                return f"Claude timed out after {self.timeout:g} seconds."
+            except Exception as exc:
+                return f"Claude error: {exc}"
 
-        output = (result.stdout or "").rstrip()
-        error = (result.stderr or "").rstrip()
-        if result.returncode == 0:
-            session.successful_turns += 1
-            return output or "(no output)"
-        return error or output or f"Claude exited with status {result.returncode}."
+            output = (result.stdout or "").rstrip()
+            error = (result.stderr or "").rstrip()
+            if result.returncode == 0:
+                session.successful_turns += 1
+                return output or "(no output)"
+            return error or output or f"Claude exited with status {result.returncode}."

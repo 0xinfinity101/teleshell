@@ -39,6 +39,9 @@ class ServiceManagerTest(unittest.TestCase):
         self.assertIn("Environment=PATH=/opt/bin:/usr/bin", content)
         self.assertIn("ExecStart=/opt/teleshell/.venv/bin/python /opt/teleshell/teleshell.py", content)
         self.assertIn("Restart=always", content)
+        self.assertIn("NoNewPrivileges=true", content)
+        self.assertIn("PrivateTmp=true", content)
+        self.assertIn("ProtectSystem=full", content)
         self.assertIn("WantedBy=default.target", content)
 
     def test_apply_autorun_true_writes_and_enables_user_service(self):

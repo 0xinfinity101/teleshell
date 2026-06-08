@@ -50,6 +50,7 @@ TELEGRAM_POOL_TIMEOUT=10
 TELEGRAM_MEDIA_WRITE_TIMEOUT=120
 TELEGRAM_GET_UPDATES_READ_TIMEOUT=60
 POLLING_TIMEOUT=30
+SAFE_MODE=true
 AUTORUN=false
 SERVICE_NAME=teleshell
 COMMAND_EXTRA_PATHS=
@@ -79,11 +80,13 @@ In Telegram:
 ```bash
 pwd
 cd Documents/novel/manuscript
-ls
-cat chapter-01.md
+/run ls
+/run cat chapter-01.md
 ```
 
-If `cat chapter-01.md` is too long to send as a message, the bot sends a document named `chapter-01.md`.
+With `SAFE_MODE=true`, shell commands must be sent with `/run <command>`. This keeps normal chat text from becoming an accidental shell command. If `/run cat chapter-01.md` is too long to send as a message, the bot sends a document named `chapter-01.md`.
+
+You can set `SAFE_MODE=false` to restore direct shell execution from plain text, but that makes every Telegram message from an allowed user a shell command.
 
 ## Autorun
 
@@ -126,6 +129,8 @@ python service_manager.py enable
 python service_manager.py disable
 ```
 
+The generated service includes basic hardening options such as `NoNewPrivileges=true`, `PrivateTmp=true`, and `ProtectSystem=full`.
+
 To allow the service to start after reboot before you log in, enable lingering once:
 
 ```bash
@@ -155,14 +160,14 @@ The bridge uses `claude --print` by default, with a stable Claude session ID for
 
 Some CLI apps need a real terminal and ongoing stdin, so one-shot command execution is not enough. `teleshell` can open a mini-shell session through a pseudo-terminal.
 
-Allowlisted interactive commands start automatically:
+When `SAFE_MODE=false`, allowlisted interactive commands start automatically:
 
 ```bash
 python
 ssh user@example.com
 ```
 
-You can force any command into interactive mode with `/pty`:
+With `SAFE_MODE=true`, use `/pty` explicitly for interactive programs:
 
 ```bash
 /pty claude
@@ -201,4 +206,4 @@ python -m unittest discover -s tests
 
 - `ALLOWED_USER_IDS` is a whitelist based on Telegram user IDs, not group chat IDs.
 - `ALLOWED_CHAT_IDS` is still read as a legacy name for compatibility.
-- Shell commands are still executed with `shell=True`, so treat this bot as full terminal access.
+- Shell commands are still executed with `shell=True` behind `/run`, so treat this bot as full terminal access.

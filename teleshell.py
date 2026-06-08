@@ -79,6 +79,19 @@ def get_float_env(name: str, default: float) -> float:
         return default
 
 
+def get_bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off", ""}:
+        return False
+    logger.warning("Invalid %s=%r value, using default %s", name, raw, default)
+    return default
+
+
 # ALLOWED_USER_IDS is comma-separated in .env: 123456789,987654321.
 # ALLOWED_CHAT_IDS is still read as the legacy name for compatibility.
 _raw_user_ids = os.getenv("ALLOWED_USER_IDS") or os.getenv("ALLOWED_CHAT_IDS", "")
@@ -99,6 +112,7 @@ TELEGRAM_POOL_TIMEOUT = get_float_env("TELEGRAM_POOL_TIMEOUT", 10.0)
 TELEGRAM_MEDIA_WRITE_TIMEOUT = get_float_env("TELEGRAM_MEDIA_WRITE_TIMEOUT", 120.0)
 TELEGRAM_GET_UPDATES_READ_TIMEOUT = get_float_env("TELEGRAM_GET_UPDATES_READ_TIMEOUT", 60.0)
 POLLING_TIMEOUT = get_float_env("POLLING_TIMEOUT", 30.0)
+SAFE_MODE = get_bool_env("SAFE_MODE", True)
 CLAUDE_BRIDGE_COMMAND = os.getenv("CLAUDE_BRIDGE_COMMAND", "claude")
 CLAUDE_BRIDGE_ARGS = os.getenv(
     "CLAUDE_BRIDGE_ARGS",
@@ -132,12 +146,20 @@ claude_bridge = ClaudeBridgeManager(
 interactive_sessions = InteractiveSessionManager(INTERACTIVE_COMMANDS)
 interactive_panels: dict[int, TerminalPanel] = {}
 interactive_panel_messages: dict[int, object] = {}
+command_locks: dict[int, asyncio.Lock] = {}
 
 def get_cwd(user_id: int) -> str:
     return user_cwd.get(user_id, os.path.expanduser("~"))
 
 def set_cwd(user_id: int, path: str):
     user_cwd[user_id] = path
+
+def get_command_lock(user_id: int) -> asyncio.Lock:
+    lock = command_locks.get(user_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        command_locks[user_id] = lock
+    return lock
 
 # ─────────────────────────────────────────────
 # HELPER
@@ -175,6 +197,13 @@ def run_shell_command(command: str, cwd: str) -> str:
     if result.stderr:
         output += result.stderr
     return output.rstrip()
+
+async def run_shell_command_for_user(user_id: int, command: str, cwd: str) -> str:
+    lock = get_command_lock(user_id)
+    if lock.locked():
+        return "Another command is still running. Wait for it to finish, or use /ctrlc for interactive sessions."
+    async with lock:
+        return await asyncio.to_thread(run_shell_command, command, cwd)
 
 def document_filename_for_command(command: str, cwd: str) -> str:
     try:
@@ -287,13 +316,19 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_output(update, output, cwd)
         return
 
+    if SAFE_MODE:
+        await update.message.reply_text(
+            "Safe mode is enabled. Use /run <command> to execute shell commands."
+        )
+        return
+
     if interactive_sessions.should_start(raw):
         await start_interactive_session(update, raw, cwd)
         return
 
     # Run other commands.
     try:
-        output = await asyncio.to_thread(run_shell_command, raw, cwd)
+        output = await run_shell_command_for_user(user_id, raw, cwd)
     except subprocess.TimeoutExpired:
         output = f"Timeout after {COMMAND_TIMEOUT} seconds."
     except Exception as e:
@@ -438,11 +473,44 @@ async def cmd_pty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not command:
         await update.message.reply_text("Usage: /pty <command>")
         return
+    if is_blocked(command):
+        await update.message.reply_text("Command blocked.")
+        return
     await start_interactive_session(
         update,
         command,
         get_cwd(update.effective_user.id),
     )
+
+async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_allowed(update):
+        return
+    command = " ".join(context.args).strip()
+    if not command:
+        await update.message.reply_text("Usage: /run <command>")
+        return
+    if is_blocked(command):
+        await update.message.reply_text("Command blocked.")
+        return
+
+    user_id = update.effective_user.id
+    cwd = get_cwd(user_id)
+    try:
+        output = await run_shell_command_for_user(user_id, command, cwd)
+    except subprocess.TimeoutExpired:
+        output = f"Timeout after {COMMAND_TIMEOUT} seconds."
+    except Exception as e:
+        output = f"Error: {e}"
+
+    try:
+        await send_output(
+            update,
+            output,
+            cwd,
+            document_filename=document_filename_for_command(command, cwd),
+        )
+    except TimedOut:
+        logger.exception("Timed out while sending output to Telegram")
 
 async def cmd_claude(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
@@ -515,6 +583,7 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("pwd", cmd_pwd))
     app.add_handler(CommandHandler("claude", cmd_claude))
+    app.add_handler(CommandHandler("run", cmd_run))
     app.add_handler(CommandHandler("pty", cmd_pty))
     app.add_handler(CommandHandler("exit", cmd_exit))
     app.add_handler(CommandHandler("ctrlc", cmd_ctrlc))
