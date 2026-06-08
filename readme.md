@@ -1,26 +1,50 @@
 # teleshell
 
-Telegram bot for running your local terminal from Telegram. It is useful for quick access to a personal machine when you are away from the keyboard.
+**A private Telegram control plane for your local machine.**
 
-## Features
+`teleshell` lets you operate a trusted computer from Telegram: run shell commands, keep a per-user working directory, open pseudo-terminal sessions for interactive CLIs, and talk to Claude Code through a chat bridge. It is designed for personal remote access when you are away from your keyboard, with safe command routing, Telegram user whitelisting, and optional systemd autorun.
 
-- Run terminal commands directly from a Telegram chat.
-- Persistent `cd` per user, so each working directory is kept while the bot is running.
-- Short output is sent as a message.
-- Long output is automatically sent as a file.
-- If `cat file-name` produces long output, the Telegram document uses the original file name.
-- Claude chat bridge for Claude Code prompts from Telegram.
-- Interactive mini-shell sessions for allowlisted commands such as `python` and `ssh`.
-- User ID whitelist.
-- Telegram API timeouts can be configured from `.env`.
+## What It Does
 
-## Security Warning
+| Capability | How it works |
+| --- | --- |
+| Safe shell access | Send shell commands with `/run <command>` when `SAFE_MODE=true`. |
+| Working directory memory | Use `cd`, then later commands run from that directory. |
+| Claude Code bridge | Type `claude`, then send normal Telegram messages as Claude prompts. |
+| Interactive PTY sessions | Use `/pty python`, `/pty ssh user@host`, or another CLI that needs stdin. |
+| Long output handling | Large output is sent as a Telegram document instead of flooding chat. |
+| Background service | Enable autorun with a systemd user service. |
+| Access control | Only `ALLOWED_USER_IDS` can use the bot. |
 
-This bot gives shell access to the machine where it runs. Use it only for personal access, with a protected bot token, a correct user whitelist, and ideally a restricted Linux user or container.
+## How It Differs From SSH
+
+`teleshell` is not a replacement for SSH. It is a Telegram-native control layer for moments when chat is the most convenient interface.
+
+| SSH | teleshell |
+| --- | --- |
+| Opens a real terminal session. | Uses Telegram messages, documents, inline buttons, and optional PTY panels. |
+| Requires network reachability to the machine, usually through LAN, VPN, port forwarding, or a tunnel. | Uses Telegram as the transport, so the bot can receive commands as long as the machine can reach Telegram. |
+| Best for long terminal work, full-screen tools, editors, and low-latency sessions. | Best for quick checks, remote commands, Claude prompts, small fixes, and phone-based workflows. |
+| Authentication is handled by SSH keys, users, and host keys. | Authentication is handled by Telegram bot token secrecy plus `ALLOWED_USER_IDS`. |
+| Mature and battle-tested as a remote shell protocol. | Convenience-focused and intentionally narrower; treat it as a private automation surface. |
+
+Use SSH when you need a real terminal. Use `teleshell` when you want to operate your machine from Telegram without exposing an SSH port or opening a terminal app.
+
+## Security Model
+
+This project intentionally gives shell access to the machine where it runs. Treat it like SSH exposed through a Telegram bot.
+
+Use it only for personal access, with:
+
+- a private bot token,
+- a strict `ALLOWED_USER_IDS` whitelist,
+- `SAFE_MODE=true`,
+- a non-root Linux user,
+- and a trusted machine or container.
 
 Do not commit `.env`. It contains your Telegram token and private user IDs.
 
-## Installation
+## Quick Start
 
 ```bash
 python -m venv .venv
@@ -29,14 +53,33 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Fill in `.env`:
+Edit `.env`:
 
 ```env
 BOT_TOKEN=token_from_botfather
 ALLOWED_USER_IDS=123456789
+SAFE_MODE=true
 ```
 
 Find your Telegram user ID with a bot such as `@userinfobot`.
+
+Run the bot:
+
+```bash
+python teleshell.py
+```
+
+Try it in Telegram:
+
+```text
+pwd
+cd Documents/novel/manuscript
+/run ls
+/run cat chapter-01.md
+claude
+summarize this folder
+/exit
+```
 
 ## Configuration
 
@@ -62,7 +105,7 @@ CLAUDE_BRIDGE_TIMEOUT=300
 INTERACTIVE_COMMANDS=python,python3,node,ssh,mysql,psql
 ```
 
-Increase these timeouts if the Telegram connection is often slow or output file uploads often time out. Keep `HTTP_LOG_LEVEL=WARNING` unless you are actively debugging Telegram requests, because lower levels may log request URLs.
+Keep `HTTP_LOG_LEVEL=WARNING` unless you are actively debugging Telegram requests, because lower levels may log request URLs.
 
 `teleshell` automatically prepends common user command directories to `PATH`, including `~/.opencode/bin`, `~/.local/bin`, `~/.bun/bin`, `~/.npm-global/bin`, and `~/.cargo/bin`. If a tool is installed somewhere else, add it to `COMMAND_EXTRA_PATHS` using colon-separated paths:
 
@@ -70,25 +113,69 @@ Increase these timeouts if the Telegram connection is often slow or output file 
 COMMAND_EXTRA_PATHS=/opt/my-tools/bin:/another/bin
 ```
 
-## Running The Bot
+## Shell Commands
 
-```bash
-source .venv/bin/activate
-python teleshell.py
-```
+With `SAFE_MODE=true`, shell commands must be sent with `/run <command>`:
 
-In Telegram:
-
-```bash
-pwd
-cd Documents/novel/manuscript
-/run ls
+```text
+/run git status
+/run python -m unittest discover -s tests
 /run cat chapter-01.md
 ```
 
-With `SAFE_MODE=true`, shell commands must be sent with `/run <command>`. This keeps normal chat text from becoming an accidental shell command. If `/run cat chapter-01.md` is too long to send as a message, the bot sends a document named `chapter-01.md`.
+This keeps normal chat text from becoming an accidental shell command. If `/run cat chapter-01.md` produces long output, the bot sends a document named `chapter-01.md`.
 
 You can set `SAFE_MODE=false` to restore direct shell execution from plain text, but that makes every Telegram message from an allowed user a shell command.
+
+## Claude Bridge
+
+Type `claude` to start a Claude chat bridge from the current working directory. While the bridge is active, normal Telegram messages are sent to Claude Code in non-interactive print mode, and Claude's response is sent back to the chat.
+
+```text
+claude
+read this project and summarize it
+run the tests and explain the failures
+/exit
+```
+
+You can also send the first prompt immediately:
+
+```text
+claude explain this repository
+```
+
+The bridge uses `claude --print` by default, with a stable Claude session ID for each Telegram session. The first prompt creates the Claude session with `--session-id`; later prompts continue it with `--resume`, so the conversation state is preserved. Use `CLAUDE_BRIDGE_ARGS` to adjust Claude flags.
+
+## Interactive Sessions
+
+Some CLI apps need a real terminal and ongoing stdin, so one-shot command execution is not enough. `teleshell` can open a mini-shell session through a pseudo-terminal.
+
+With `SAFE_MODE=true`, start interactive programs explicitly:
+
+```text
+/pty python
+/pty ssh user@example.com
+/pty opencode
+```
+
+When `SAFE_MODE=false`, allowlisted commands in `INTERACTIVE_COMMANDS` can start automatically.
+
+While a session is active, `teleshell` keeps a mini terminal panel updated by editing the session message. Normal Telegram messages are sent to that process instead of being executed as new shell commands.
+
+The panel is rendered as a preformatted terminal viewport and uses a small ANSI terminal emulator for apps that redraw the screen. Use `Up` and `Down` to scroll through older or newer output.
+
+```text
+[Up] [Down]
+[1] [2] [Enter] [Esc]
+[Ctrl-C] [Close]
+```
+
+Session controls:
+
+```text
+/exit
+/ctrlc
+```
 
 ## Autorun
 
@@ -99,7 +186,7 @@ AUTORUN=true
 SERVICE_NAME=teleshell
 ```
 
-Then apply the setting:
+Apply the setting:
 
 ```bash
 source .venv/bin/activate
@@ -116,12 +203,6 @@ systemctl --user enable --now teleshell.service
 
 When `AUTORUN=false`, running `python service_manager.py apply` disables and removes the user service.
 
-The generated service uses the repository virtual environment by default:
-
-```bash
-.venv/bin/python teleshell.py
-```
-
 Useful service manager commands:
 
 ```bash
@@ -134,22 +215,11 @@ python service_manager.py disable
 Useful systemd commands:
 
 ```bash
-# Restart after editing code or .env
 systemctl --user restart teleshell.service
-
-# Stop temporarily
 systemctl --user stop teleshell.service
-
-# Start again
 systemctl --user start teleshell.service
-
-# Stop and disable autorun
 systemctl --user disable --now teleshell.service
-
-# Check status
 systemctl --user status teleshell.service --no-pager
-
-# Show recent logs
 journalctl --user -u teleshell.service -n 80 --no-pager
 ```
 
@@ -168,65 +238,7 @@ To allow the service to start after reboot before you log in, enable lingering o
 loginctl enable-linger "$USER"
 ```
 
-## Claude Bridge
-
-Type `claude` to start a Claude chat bridge from the current working directory. While the bridge is active, normal Telegram messages are sent to Claude Code in non-interactive print mode, and Claude's response is sent back to the chat.
-
-```bash
-claude
-read this project and summarize it
-run the tests and explain the failures
-/exit
-```
-
-You can also send the first prompt immediately:
-
-```bash
-claude explain this repository
-```
-
-The bridge uses `claude --print` by default, with a stable Claude session ID for each Telegram session. The first prompt creates the Claude session with `--session-id`; later prompts continue it with `--resume`, so the conversation state is preserved. Use `CLAUDE_BRIDGE_ARGS` to adjust Claude flags. If Claude needs broader tool permissions for your workflow, configure that in `.env` deliberately.
-
-## Interactive Sessions
-
-Some CLI apps need a real terminal and ongoing stdin, so one-shot command execution is not enough. `teleshell` can open a mini-shell session through a pseudo-terminal.
-
-When `SAFE_MODE=false`, allowlisted interactive commands start automatically:
-
-```bash
-python
-ssh user@example.com
-```
-
-With `SAFE_MODE=true`, use `/pty` explicitly for interactive programs:
-
-```bash
-/pty claude
-/pty python
-```
-
-While a session is active, `teleshell` keeps a mini terminal panel updated by editing the session message. Normal Telegram messages are sent to that process instead of being executed as new shell commands.
-
-The panel is rendered as a preformatted terminal viewport and uses a small ANSI terminal emulator for apps that redraw the screen, such as Claude Code. It uses about 16 rows by 42 columns, which keeps it close to a small Telegram terminal. Use `Up` and `Down` to scroll through older or newer output.
-
-The panel includes buttons for common interactive prompts:
-
-```text
-[Up] [Down]
-[1] [2] [Enter] [Esc]
-[Ctrl-C] [Close]
-```
-
-Session controls:
-
-```bash
-/exit
-/ctrlc
-```
-
-For command-line prompts, tap `1`, `2`, `Enter`, or `Esc` as needed.
-
-## Test
+## Testing
 
 ```bash
 source .venv/bin/activate
