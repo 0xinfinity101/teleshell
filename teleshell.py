@@ -1,21 +1,21 @@
 """
-Telegram Terminal Bot
-=====================
-Jalankan perintah terminal langsung dari Telegram.
-- Tanpa prefix, ketik langsung: ls, cd /home, pwd, dll
+teleshell
+==========
+Run terminal commands directly from Telegram.
+- No prefix required; type commands directly: ls, cd /home, pwd, etc.
 - cd persistent per session
-- Output panjang otomatis dikirim sebagai file
-- Whitelist user ID untuk keamanan
+- Long output is automatically sent as a file
+- User ID whitelist for access control
 
-Instalasi:
+Installation:
     pip install python-telegram-bot python-dotenv
 
-Buat file .env di folder yang sama:
-    BOT_TOKEN=isi_token_kamu
+Create a .env file in the same directory:
+    BOT_TOKEN=your_token_here
     ALLOWED_USER_IDS=123456789,987654321
 
-Jalankan:
-    python telegram_terminal_bot.py
+Run:
+    python teleshell.py
 """
 
 import os
@@ -32,7 +32,7 @@ from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, fil
 load_dotenv()
 
 # ─────────────────────────────────────────────
-# KONFIGURASI — dari .env
+# CONFIGURATION - from .env
 # ─────────────────────────────────────────────
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
@@ -55,23 +55,23 @@ def get_float_env(name: str, default: float) -> float:
     try:
         return float(raw)
     except ValueError:
-        logger.warning("Nilai %s=%r tidak valid, memakai default %s", name, raw, default)
+        logger.warning("Invalid %s=%r value, using default %s", name, raw, default)
         return default
 
 
-# ALLOWED_USER_IDS di .env diisi dipisah koma: 123456789,987654321.
-# ALLOWED_CHAT_IDS tetap dibaca sebagai nama lama agar konfigurasi lama tidak rusak.
+# ALLOWED_USER_IDS is comma-separated in .env: 123456789,987654321.
+# ALLOWED_CHAT_IDS is still read as the legacy name for compatibility.
 _raw_user_ids = os.getenv("ALLOWED_USER_IDS") or os.getenv("ALLOWED_CHAT_IDS", "")
 ALLOWED_USER_IDS = parse_id_set(_raw_user_ids)
 
-# Batas karakter sebelum output dikirim sebagai file
+# Character limit before output is sent as a file
 MAX_OUTPUT_CHARS = 3500
 
-# Timeout eksekusi perintah (detik)
+# Command execution timeout in seconds
 COMMAND_TIMEOUT = 30
 
-# Timeout request Telegram API. Default bawaan library 5 detik sering terlalu sempit
-# untuk jaringan lambat, long polling, atau upload output file.
+# Telegram API request timeouts. The library default of 5 seconds is often too
+# short for slow networks, long polling, or output file uploads.
 TELEGRAM_CONNECT_TIMEOUT = get_float_env("TELEGRAM_CONNECT_TIMEOUT", 15.0)
 TELEGRAM_READ_TIMEOUT = get_float_env("TELEGRAM_READ_TIMEOUT", 30.0)
 TELEGRAM_WRITE_TIMEOUT = get_float_env("TELEGRAM_WRITE_TIMEOUT", 30.0)
@@ -80,7 +80,7 @@ TELEGRAM_MEDIA_WRITE_TIMEOUT = get_float_env("TELEGRAM_MEDIA_WRITE_TIMEOUT", 120
 TELEGRAM_GET_UPDATES_READ_TIMEOUT = get_float_env("TELEGRAM_GET_UPDATES_READ_TIMEOUT", 60.0)
 POLLING_TIMEOUT = get_float_env("POLLING_TIMEOUT", 30.0)
 
-# Perintah yang diblokir (opsional, hapus jika tidak perlu)
+# Blocked commands. Adjust this list for your own risk tolerance.
 BLOCKED_COMMANDS = {
     "rm -rf /",
     "rm -rf /*",
@@ -91,7 +91,7 @@ BLOCKED_COMMANDS = {
 MARKDOWN_V2_SPECIAL_CHARS = r"_*[]()~`>#+-=|{}.!"
 
 # ─────────────────────────────────────────────
-# STATE — Menyimpan working directory per user
+# STATE - Stores each user's working directory
 # ─────────────────────────────────────────────
 
 user_cwd: dict[int, str] = {}
@@ -154,7 +154,7 @@ def document_filename_for_command(command: str, cwd: str) -> str:
     return "output.txt"
 
 async def send_output(update: Update, text: str, cwd: str, document_filename: str = "output.txt"):
-    """Kirim output. Jika terlalu panjang, kirim sebagai file .txt"""
+    """Send output. If it is too long, send it as a .txt file."""
     header = f"`{escape_markdown_v2(cwd)}` ↵\n"
 
     if len(text) == 0:
@@ -165,17 +165,17 @@ async def send_output(update: Update, text: str, cwd: str, document_filename: st
         full = header + f"```\n{escape_markdown_v2(text)}\n```"
         await update.message.reply_text(full, parse_mode="MarkdownV2")
     else:
-        # Output terlalu panjang → kirim sebagai file
+        # Output is too long, so send it as a file.
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False, prefix="terminal_output_"
+            mode="w", suffix=".txt", delete=False, prefix="teleshell_output_"
         ) as f:
             f.write(text)
             tmp_path = f.name
 
         await update.message.reply_text(
             header + (
-                f"_\\(output terlalu panjang, {len(text)} karakter, "
-                "dikirim sebagai file\\)_"
+                f"_\\(output too long, {len(text)} characters, "
+                "sent as a file\\)_"
             ),
             parse_mode="MarkdownV2"
         )
@@ -186,28 +186,27 @@ async def send_output(update: Update, text: str, cwd: str, document_filename: st
             os.unlink(tmp_path)
 
 # ─────────────────────────────────────────────
-# HANDLER UTAMA — Eksekusi perintah
+# MAIN HANDLER - Command execution
 # ─────────────────────────────────────────────
 
 async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
-        await update.message.reply_text("⛔ Akses ditolak.")
+        await update.message.reply_text("Access denied.")
         return
 
     raw = update.message.text.strip()
     if not raw:
         return
 
-    # Cek blacklist
+    # Check the blocklist.
     if is_blocked(raw):
-        await update.message.reply_text("⛔ Perintah diblokir.")
+        await update.message.reply_text("Command blocked.")
         return
 
     user_id = update.effective_user.id
     cwd = get_cwd(user_id)
 
-    # Handle perintah cd secara khusus
-    # Karena subprocess tidak bisa mengubah cwd parent process
+    # Handle cd specially because subprocess cannot change the parent cwd.
     if raw == "cd" or raw.startswith("cd ") or raw.startswith("cd\t"):
         parts = raw.split(maxsplit=1)
         target = parts[1] if len(parts) > 1 else os.path.expanduser("~")
@@ -227,11 +226,11 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # Jalankan perintah lain
+    # Run other commands.
     try:
         output = await asyncio.to_thread(run_shell_command, raw, cwd)
     except subprocess.TimeoutExpired:
-        output = f"⏱ Timeout setelah {COMMAND_TIMEOUT} detik."
+        output = f"Timeout after {COMMAND_TIMEOUT} seconds."
     except Exception as e:
         output = f"Error: {e}"
 
@@ -243,10 +242,10 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             document_filename=document_filename_for_command(raw, cwd),
         )
     except TimedOut:
-        logger.exception("Timeout saat mengirim output ke Telegram")
+        logger.exception("Timed out while sending output to Telegram")
 
 # ─────────────────────────────────────────────
-# COMMAND /start dan /pwd
+# COMMANDS /start and /pwd
 # ─────────────────────────────────────────────
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -255,10 +254,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     cwd = get_cwd(user_id)
     await update.message.reply_text(
-        f"Terminal Bot aktif\n\n"
-        f"Ketik perintah langsung, tidak perlu prefix /.\n"
-        f"Working dir sekarang: {cwd}\n\n"
-        f"Contoh: ls -la, pwd, cd /tmp, cat /etc/hostname"
+        f"teleshell is active\n\n"
+        f"Type commands directly. No / prefix required.\n"
+        f"Current working directory: {cwd}\n\n"
+        f"Examples: ls -la, pwd, cd /tmp, cat /etc/hostname"
     )
 
 async def cmd_pwd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -277,7 +276,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     if isinstance(context.error, NetworkError):
         logger.warning("Network error Telegram: %s", context.error)
         return
-    logger.exception("Error tidak terduga dari bot", exc_info=context.error)
+    logger.exception("Unexpected bot error", exc_info=context.error)
 
 # ─────────────────────────────────────────────
 # MAIN
@@ -285,10 +284,10 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not BOT_TOKEN:
-        print("❌ BOT_TOKEN tidak ditemukan di .env!")
+        print("BOT_TOKEN was not found in .env!")
         return
     if not ALLOWED_USER_IDS:
-        print("❌ ALLOWED_USER_IDS tidak ditemukan atau kosong di .env!")
+        print("ALLOWED_USER_IDS was not found or is empty in .env!")
         return
 
     app = (
@@ -308,11 +307,11 @@ def main():
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("pwd", cmd_pwd))
-    # Semua pesan teks biasa → eksekusi sebagai perintah
+    # Every plain text message is treated as a command.
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_command))
     app.add_error_handler(error_handler)
 
-    print("🤖 Bot berjalan... (Ctrl+C untuk stop)")
+    print("Bot is running... (Ctrl+C to stop)")
     app.run_polling(timeout=POLLING_TIMEOUT, bootstrap_retries=-1)
 
 if __name__ == "__main__":

@@ -22,7 +22,7 @@ dist/
 # Logs and temporary files
 *.log
 *.tmp
-terminal_output_*.txt
+teleshell_output_*.txt
 
 # OS/editor noise
 .DS_Store

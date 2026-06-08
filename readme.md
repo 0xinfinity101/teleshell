@@ -1,24 +1,24 @@
-# terminalhub
+# teleshell
 
-Telegram bot untuk menjalankan terminal lokal dari Telegram. Cocok untuk akses cepat ke mesin pribadi saat sedang jauh dari keyboard.
+Telegram bot for running your local terminal from Telegram. It is useful for quick access to a personal machine when you are away from the keyboard.
 
-## Fitur
+## Features
 
-- Jalankan command terminal langsung dari chat Telegram.
-- `cd` persistent per user, jadi working directory tetap tersimpan selama bot hidup.
-- Output pendek dikirim sebagai pesan.
-- Output panjang otomatis dikirim sebagai file.
-- Jika command `cat nama-file` menghasilkan output panjang, file Telegram memakai nama file asli.
-- Whitelist user ID.
-- Timeout Telegram API bisa dikonfigurasi dari `.env`.
+- Run terminal commands directly from a Telegram chat.
+- Persistent `cd` per user, so each working directory is kept while the bot is running.
+- Short output is sent as a message.
+- Long output is automatically sent as a file.
+- If `cat file-name` produces long output, the Telegram document uses the original file name.
+- User ID whitelist.
+- Telegram API timeouts can be configured from `.env`.
 
-## Peringatan Keamanan
+## Security Warning
 
-Bot ini memberi akses shell ke mesin tempat bot berjalan. Jalankan hanya untuk penggunaan pribadi, dengan token bot yang aman, user whitelist yang benar, dan idealnya pada user Linux/container dengan permission terbatas.
+This bot gives shell access to the machine where it runs. Use it only for personal access, with a protected bot token, a correct user whitelist, and ideally a restricted Linux user or container.
 
-Jangan commit `.env`. File itu berisi token Telegram dan user ID privat.
+Do not commit `.env`. It contains your Telegram token and private user IDs.
 
-## Instalasi
+## Installation
 
 ```bash
 python -m venv .venv
@@ -27,18 +27,18 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Isi `.env`:
+Fill in `.env`:
 
 ```env
-BOT_TOKEN=token_dari_botfather
+BOT_TOKEN=token_from_botfather
 ALLOWED_USER_IDS=123456789
 ```
 
-Cari user ID Telegram kamu dengan bot seperti `@userinfobot`.
+Find your Telegram user ID with a bot such as `@userinfobot`.
 
-## Konfigurasi
+## Configuration
 
-Contoh lengkap ada di `.env.example`.
+The full example is in `.env.example`.
 
 ```env
 TELEGRAM_CONNECT_TIMEOUT=15
@@ -50,35 +50,35 @@ TELEGRAM_GET_UPDATES_READ_TIMEOUT=60
 POLLING_TIMEOUT=30
 ```
 
-Naikkan timeout jika koneksi ke Telegram sering lambat atau upload output file sering timeout.
+Increase these timeouts if the Telegram connection is often slow or output file uploads often time out.
 
-## Menjalankan Bot
+## Running The Bot
 
 ```bash
 source .venv/bin/activate
-python telegram_terminal_bot.py
+python teleshell.py
 ```
 
-Di Telegram:
+In Telegram:
 
 ```bash
 pwd
-cd Documents/novel/naskah
+cd Documents/novel/manuscript
 ls
-cat bab-01.md
+cat chapter-01.md
 ```
 
-Jika `cat bab-01.md` terlalu panjang untuk dikirim sebagai pesan, bot akan mengirim dokumen bernama `bab-01.md`.
+If `cat chapter-01.md` is too long to send as a message, the bot sends a document named `chapter-01.md`.
 
 ## Test
 
 ```bash
 source .venv/bin/activate
-python -m unittest test_telegram_terminal_bot.py
+python -m unittest test_teleshell.py
 ```
 
-## Catatan
+## Notes
 
-- `ALLOWED_USER_IDS` adalah whitelist berdasarkan user ID Telegram, bukan chat ID grup.
-- `ALLOWED_CHAT_IDS` masih dibaca sebagai nama lama untuk kompatibilitas.
-- Command shell tetap dieksekusi dengan `shell=True`, jadi perlakukan bot ini seperti akses terminal penuh.
+- `ALLOWED_USER_IDS` is a whitelist based on Telegram user IDs, not group chat IDs.
+- `ALLOWED_CHAT_IDS` is still read as a legacy name for compatibility.
+- Shell commands are still executed with `shell=True`, so treat this bot as full terminal access.
