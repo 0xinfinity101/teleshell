@@ -11,6 +11,7 @@ class ClaudeBridgeCommandTest(unittest.TestCase):
             args="--print --permission-mode acceptEdits",
             session_id="00000000-0000-4000-8000-000000000000",
             prompt="hello claude",
+            resume=False,
         )
 
         self.assertEqual(argv, [
@@ -21,6 +22,23 @@ class ClaudeBridgeCommandTest(unittest.TestCase):
             "--session-id",
             "00000000-0000-4000-8000-000000000000",
             "hello claude",
+        ])
+
+    def test_build_claude_command_uses_resume_after_first_prompt(self):
+        argv = build_claude_command(
+            command="claude",
+            args="--print",
+            session_id="00000000-0000-4000-8000-000000000000",
+            prompt="continue",
+            resume=True,
+        )
+
+        self.assertEqual(argv, [
+            "claude",
+            "--print",
+            "--resume",
+            "00000000-0000-4000-8000-000000000000",
+            "continue",
         ])
 
 
@@ -53,7 +71,8 @@ class ClaudeBridgeManagerTest(unittest.IsolatedAsyncioTestCase):
             "00000000-0000-4000-8000-000000000000",
             "who are you?",
         ])
-        self.assertEqual(calls[1][0][-2:], [
+        self.assertEqual(calls[1][0][-3:], [
+            "--resume",
             "00000000-0000-4000-8000-000000000000",
             "continue",
         ])

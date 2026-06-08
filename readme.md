@@ -93,7 +93,7 @@ You can also send the first prompt immediately:
 claude explain this repository
 ```
 
-The bridge uses `claude --print` by default, with a stable Claude session ID for each Telegram session. Use `CLAUDE_BRIDGE_ARGS` to adjust Claude flags. If Claude needs broader tool permissions for your workflow, configure that in `.env` deliberately.
+The bridge uses `claude --print` by default, with a stable Claude session ID for each Telegram session. The first prompt creates the Claude session with `--session-id`; later prompts continue it with `--resume`, so the conversation state is preserved. Use `CLAUDE_BRIDGE_ARGS` to adjust Claude flags. If Claude needs broader tool permissions for your workflow, configure that in `.env` deliberately.
 
 ## Interactive Sessions
 

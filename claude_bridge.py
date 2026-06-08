@@ -14,11 +14,13 @@ def build_claude_command(
     args: str,
     session_id: str,
     prompt: str,
+    resume: bool = False,
 ) -> list[str]:
+    session_flag = "--resume" if resume else "--session-id"
     return [
         *shlex.split(command),
         *shlex.split(args),
-        "--session-id",
+        session_flag,
         session_id,
         prompt,
     ]
@@ -38,6 +40,7 @@ def default_runner(argv: list[str], cwd: str, timeout: float) -> subprocess.Comp
 class ClaudeBridgeSession:
     cwd: str
     session_id: str
+    successful_turns: int = 0
 
 
 class ClaudeBridgeManager:
@@ -77,6 +80,7 @@ class ClaudeBridgeManager:
             self.args,
             session.session_id,
             prompt,
+            resume=session.successful_turns > 0,
         )
         try:
             result = await asyncio.to_thread(self.runner, argv, session.cwd, self.timeout)
@@ -88,5 +92,6 @@ class ClaudeBridgeManager:
         output = (result.stdout or "").rstrip()
         error = (result.stderr or "").rstrip()
         if result.returncode == 0:
+            session.successful_turns += 1
             return output or "(no output)"
         return error or output or f"Claude exited with status {result.returncode}."
