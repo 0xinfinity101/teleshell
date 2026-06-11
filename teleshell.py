@@ -552,10 +552,13 @@ async def cmd_exit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_allowed(update):
         return
     user_id = update.effective_user.id
-    if claude_bridge.stop(user_id):
-        await update.message.reply_text("Claude bridge closed.")
+    # Try to kill Claude bridge session first (with actual process termination)
+    kill_result = await claude_bridge.kill_session(user_id)
+    if "Claude session" in kill_result:
+        await update.message.reply_text(kill_result)
         return
 
+    # If no Claude session, try interactive session
     stopped = await close_interactive_session(user_id)
     await update.message.reply_text(
         "Interactive session closed." if stopped else "No interactive session is running."
